@@ -1,0 +1,2090 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; object-src 'none'; base-uri 'self'; form-action 'none';" />
+  <title>NotebookLM 簡報轉可編輯 PPTX 工作台（支援滑鼠自由圈選局部編輯）</title>
+  <!-- 引入 PDF.js, JSZip, PptxGenJS, Tesseract.js（啟用 SRI 子資源完整性驗證與固定版本） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js" integrity="sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg-main: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-muted: #F1F5F9;
+      --border-color: #E2E8F0;
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --success: #16A34A;
+      --danger: #DC2626;
+      --warning: #D97706;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Microsoft JhengHei", "PingFang TC", -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      line-height: 1.5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand-Group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background-color: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid #BFDBFE;
+    }
+
+    .toolbar-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .control-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    select, input[type="text"], input[type="password"], input[type="number"] {
+      padding: 5px 9px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .btn {
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #FFFFFF;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-outline {
+      background-color: var(--bg-surface);
+      border-color: var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background-color: var(--bg-muted);
+    }
+
+    .btn-success {
+      background-color: var(--success);
+      color: #FFFFFF;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background-color: #15803D;
+    }
+
+    .btn-danger {
+      background-color: #FEF2F2;
+      color: var(--danger);
+      border-color: #FECACA;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 240px 1fr 350px;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .sidebar-left {
+      background-color: var(--bg-surface);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: var(--bg-muted);
+      flex-shrink: 0;
+    }
+
+    .slide-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .slide-thumb-card {
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      background-color: var(--bg-surface);
+      transition: border-color 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .slide-thumb-card.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    }
+
+    .slide-thumb-img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: contain;
+      background-color: #E2E8F0;
+      display: block;
+    }
+
+    .slide-thumb-meta {
+      padding: 6px 10px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .status-dot {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .status-pending {
+      background-color: var(--bg-muted);
+      color: var(--text-secondary);
+    }
+
+    .status-done {
+      background-color: #DCFCE7;
+      color: var(--success);
+    }
+
+    .status-working {
+      background-color: #FEF3C7;
+      color: var(--warning);
+    }
+
+    .center-stage {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      background-color: var(--bg-main);
+    }
+
+    .stage-toolbar {
+      padding: 10px 20px;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .view-tabs {
+      display: flex;
+      background-color: var(--bg-muted);
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .view-tab {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+    }
+
+    .view-tab.active {
+      background-color: var(--bg-surface);
+      color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+
+    .marquee-hint-banner {
+      background-color: var(--primary-light);
+      border-bottom: 1px solid #BFDBFE;
+      color: #1E40AF;
+      padding: 7px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .canvas-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: auto;
+      position: relative;
+    }
+
+    .upload-dropzone {
+      width: 100%;
+      max-width: 640px;
+      border: 2px dashed #94A3B8;
+      border-radius: 12px;
+      background-color: var(--bg-surface);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+      border-color: var(--primary);
+      background-color: var(--primary-light);
+    }
+
+    .upload-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .upload-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    .slide-stage-wrapper {
+      position: relative;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+      border: 1px solid var(--border-color);
+      background-color: #FFFFFF;
+      max-width: 100%;
+      max-height: 100%;
+      display: none;
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    .slide-stage-img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 210px);
+      width: auto;
+      height: auto;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .overlay-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+
+    /* 滑鼠拖曳圈選框 */
+    .selection-marquee {
+      position: absolute;
+      border: 2px solid var(--primary);
+      background-color: rgba(37, 99, 235, 0.15);
+      pointer-events: none;
+      display: none;
+      z-index: 30;
+    }
+
+    .ocr-box {
+      position: absolute;
+      border: 1px dashed rgba(37, 99, 235, 0.75);
+      background-color: rgba(255, 255, 255, 0.05);
+      cursor: move;
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      padding: 0;
+      margin: 0;
+      overflow: visible;
+      transition: box-shadow 0.1s ease, border-color 0.1s ease;
+    }
+
+    .ocr-box:hover, .ocr-box.selected {
+      border: 2px solid var(--primary);
+      background-color: rgba(37, 99, 235, 0.08);
+      z-index: 10;
+    }
+
+    .ocr-box-text {
+      line-height: 1.05;
+      margin: 0;
+      padding: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      pointer-events: none;
+    }
+
+    .sidebar-right {
+      background-color: var(--bg-surface);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .blocks-editor-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .block-card {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px;
+      background-color: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .block-card.selected {
+      border-color: var(--primary);
+      background-color: var(--primary-light);
+    }
+
+    .block-card textarea {
+      width: 100%;
+      min-height: 48px;
+      padding: 6px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .block-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .color-input-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    input[type="color"] {
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 0;
+      cursor: pointer;
+      background: none;
+    }
+
+    .status-bar {
+      padding: 8px 24px;
+      background-color: var(--bg-surface);
+      border-top: 1px solid var(--border-color);
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-Group">
+      <div class="brand-title">NotebookLM 簡報轉可編輯 PPTX 工作台</div>
+      <span class="badge">滑鼠自由圈選 + 純本機離線安全版</span>
+    </div>
+
+    <div class="toolbar-controls">
+      <label class="control-item" title="選擇如何抹除原始圖片上的文字">
+        <span>去字模式：</span>
+        <select id="inpaintModeSelect">
+          <option value="hybrid" selected>智慧混合（筆畫遮罩 + 鄰域擴散無痕修復）</option>
+          <option value="solid">背景純色覆蓋（適合單純白底或單一純色底圖）</option>
+        </select>
+      </label>
+
+      <label class="control-item" title="自動偵測並無痕抹除右下角 NotebookLM 浮水印">
+        <input type="checkbox" id="removeWatermarkCheckbox" checked />
+        <span>抹除右下角浮水印</span>
+      </label>
+
+      <a href="tutorial.html" target="_blank" rel="noopener noreferrer" class="btn btn-outline" id="headerTutorialLink" style="text-decoration: none; color: var(--primary); border-color: #BFDBFE; background-color: #EFF6FF;">使用教學說明</a>
+      <button class="btn btn-outline" id="reuploadBtn">匯入簡報檔案</button>
+      <button class="btn btn-outline" id="analyzeAllBtn" disabled title="對所有頁面執行整頁全自動文字辨識">整頁辨識全部頁面</button>
+      <button class="btn btn-success" id="exportPptxBtn" disabled>匯出可編輯 PPTX</button>
+    </div>
+  </header>
+
+  <input type="file" id="fileInput" accept=".pdf,.pptx,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
+
+  <div class="workspace">
+    <!-- 左側頁面縮圖欄 -->
+    <aside class="sidebar-left">
+      <div class="panel-header">
+        <span>投影片頁面清單</span>
+        <span id="slideCountBadge">0 頁</span>
+      </div>
+      <div class="slide-list" id="slideListContainer"></div>
+    </aside>
+
+    <!-- 中間預覽與畫布區 -->
+    <main class="center-stage">
+      <div class="stage-toolbar">
+        <div class="view-tabs" id="viewTabsGroup">
+          <button class="view-tab active" data-mode="reconstructed">圈選編輯預覽（去字底圖 + 文字框）</button>
+          <button class="view-tab" data-mode="clean">僅檢視無字底圖</button>
+          <button class="view-tab" data-mode="original">檢視原始圖片</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-outline" id="analyzeCurrentBtn" disabled title="自動抓出本頁所有文字">整頁自動辨識此頁</button>
+          <button class="btn btn-outline" id="clearSlideBlocksBtn" disabled title="清除本頁所有文字框並還原原始底圖">還原本頁原圖</button>
+        </div>
+      </div>
+
+      <div class="marquee-hint-banner">
+        <span>滑鼠自由圈選模式：直接在下方投影片畫布上「按住滑鼠左鍵拖曳框選」任何想修改的文字，系統即會自動抹除該處原字並轉為可編輯文字框！</span>
+        <a href="tutorial.html" target="_blank" rel="noopener noreferrer" style="color: var(--primary); font-weight: 700; text-decoration: underline; white-space: nowrap;">查看完整圖文教學 &rarr;</a>
+      </div>
+
+      <div class="canvas-container" id="canvasContainer">
+        <div class="upload-dropzone" id="uploadDropzone">
+          <div class="upload-title">拖曳或點擊上傳 NotebookLM 簡報檔案</div>
+          <div class="upload-desc">
+            支援直接匯入 <strong>.pdf</strong>、圖片型 <strong>.pptx</strong> 或多張 <strong>.png / .jpg</strong> 投影片圖片。<br />
+            匯入後可直接在畫面上<strong>用滑鼠左鍵拖曳圈選要修改的文字區塊</strong>（未圈選處 100% 保持原圖畫質），也可一鍵整頁辨識。
+          </div>
+          <div style="display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;">
+            <button class="btn btn-primary" type="button">選擇檔案</button>
+            <a href="tutorial.html" target="_blank" rel="noopener noreferrer" id="dropzoneTutorialLink" class="btn btn-outline" style="text-decoration: none; color: var(--primary); border-color: #BFDBFE; background-color: #EFF6FF;">點此開啟使用教學頁面</a>
+          </div>
+        </div>
+
+        <div class="slide-stage-wrapper" id="slideStageWrapper">
+          <img id="stageBaseImage" class="slide-stage-img" alt="Slide Preview" />
+          <div class="overlay-layer" id="stageOverlayLayer"></div>
+          <div class="selection-marquee" id="selectionMarquee"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右側文字方塊編輯欄 -->
+    <aside class="sidebar-right">
+      <div class="panel-header">
+        <span>已圈選之可編輯文字清單</span>
+        <span id="blockCountBadge">0 個區塊</span>
+      </div>
+      <div class="blocks-editor-list" id="blocksEditorContainer"></div>
+    </aside>
+  </div>
+
+  <footer class="status-bar">
+    <div id="statusMessage">系統就緒。請先匯入 NotebookLM 產出的 PDF、PPTX 或圖片檔。</div>
+    <div>預設字型：微軟正黑體 (Microsoft JhengHei) | <span id="aspectRatioInfo">比例：自動偵測（支援 16:9 / 4:3 / 16:10 / A4）</span></div>
+  </footer>
+
+  <script>
+    // 防範 Clickjacking 點擊劫持：禁止外部網站在 iframe 中嵌入本工作台
+    if (window.top !== window.self) {
+      try {
+        window.top.location = window.self.location.href;
+      } catch (_) {}
+      document.documentElement.innerHTML = '';
+      throw new Error('Blocked framing by external site.');
+    }
+
+    // 設定 PDF.js Worker 來源（支援 file:// 與 http(s):// 雙模式穩定解析）
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024; // 單一檔案上限 150 MB
+    const MAX_SLIDE_COUNT = 150; // 最大投影片頁數上限
+    const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/bmp']);
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function sanitizeId(val, fallback = 'block_0') {
+      if (typeof val !== 'string') return fallback;
+      const cleaned = val.trim();
+      return /^[A-Za-z0-9_-]{1,64}$/.test(cleaned) ? cleaned : fallback;
+    }
+
+    function escapeCssSelector(val) {
+      const safe = String(val || '');
+      if (window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(safe);
+      }
+      return safe.replace(/["\\#.:[\]()>+~*^$|]/g, '\\$&');
+    }
+
+    function sanitizeHexColor(val, fallback = '0F172A') {
+      if (typeof val !== 'string') return fallback;
+      const cleaned = val.replace(/^#/, '').trim().toUpperCase();
+      return /^[0-9A-F]{6}$/.test(cleaned) ? cleaned : fallback;
+    }
+
+    function sanitizeNumber(val, min, max, fallback = 0) {
+      const n = Number(val);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function sanitizeImageDataUrl(url) {
+      if (typeof url !== 'string') return '';
+      const trimmed = url.trim();
+      if (/^data:image\/(png|jpeg|jpg|webp|bmp);base64,[A-Za-z0-9+/=\s]+$/i.test(trimmed)) {
+        return trimmed;
+      }
+      return '';
+    }
+
+    /**
+     * 根據投影片實際像素寬高，動態推算 PowerPoint 母片尺寸（英吋與點數 pt）及長寬比標籤
+     */
+    function getSlideMetrics(slide) {
+      const w = (slide && slide.width > 0) ? slide.width : 1920;
+      const h = (slide && slide.height > 0) ? slide.height : 1080;
+      const ratio = w / h;
+
+      // 橫式或正方形以 10.0 吋寬為基準；直式文件（如 A4 直式、9:16）以 7.5 吋寬為基準避免頁面過高
+      const slideWInch = ratio >= 1.0 ? 10.0 : 7.5;
+      const slideHInch = Number(Math.max(2.0, Math.min(20.0, slideWInch / ratio)).toFixed(3));
+      const ptW = Math.round(slideWInch * 72);
+      const ptH = Math.round(slideHInch * 72);
+
+      const is16x9 = Math.abs(ratio - 16 / 9) < 0.04;
+      const is4x3 = Math.abs(ratio - 4 / 3) < 0.04;
+
+      let ratioLabel = `自訂比例 (${w}×${h})`;
+      if (is16x9) {
+        ratioLabel = '16:9 寬螢幕';
+      } else if (is4x3) {
+        ratioLabel = '4:3 標準簡報';
+      } else if (Math.abs(ratio - 16 / 10) < 0.04) {
+        ratioLabel = '16:10 簡報';
+      } else if (Math.abs(ratio - Math.SQRT2) < 0.04) {
+        ratioLabel = 'A4 橫式';
+      } else if (Math.abs(ratio - 1 / Math.SQRT2) < 0.04) {
+        ratioLabel = 'A4 直式';
+      } else if (Math.abs(ratio - 1.0) < 0.04) {
+        ratioLabel = '1:1 正方形';
+      } else if (Math.abs(ratio - 9 / 16) < 0.04) {
+        ratioLabel = '9:16 直式';
+      }
+
+      return { w, h, ratio, slideWInch, slideHInch, ptW, ptH, is16x9, is4x3, ratioLabel };
+    }
+
+    const state = {
+      slides: [],
+      currentSlideIndex: -1,
+      selectedBlockId: null,
+      viewMode: 'reconstructed',
+      isProcessingBatch: false,
+      isDraggingMarquee: false,
+      dragStartX: 0,
+      dragStartY: 0
+    };
+
+    const fileInput = document.getElementById('fileInput');
+    const uploadDropzone = document.getElementById('uploadDropzone');
+    const reuploadBtn = document.getElementById('reuploadBtn');
+    const analyzeAllBtn = document.getElementById('analyzeAllBtn');
+    const analyzeCurrentBtn = document.getElementById('analyzeCurrentBtn');
+    const clearSlideBlocksBtn = document.getElementById('clearSlideBlocksBtn');
+    const exportPptxBtn = document.getElementById('exportPptxBtn');
+    const slideListContainer = document.getElementById('slideListContainer');
+    const slideCountBadge = document.getElementById('slideCountBadge');
+    const blockCountBadge = document.getElementById('blockCountBadge');
+    const blocksEditorContainer = document.getElementById('blocksEditorContainer');
+    const slideStageWrapper = document.getElementById('slideStageWrapper');
+    const stageBaseImage = document.getElementById('stageBaseImage');
+    const stageOverlayLayer = document.getElementById('stageOverlayLayer');
+    const selectionMarquee = document.getElementById('selectionMarquee');
+    const statusMessage = document.getElementById('statusMessage');
+    const inpaintModeSelect = document.getElementById('inpaintModeSelect');
+    const removeWatermarkCheckbox = document.getElementById('removeWatermarkCheckbox');
+    const viewTabsGroup = document.getElementById('viewTabsGroup');
+    const aspectRatioInfo = document.getElementById('aspectRatioInfo');
+
+    // 自動清除舊版可能遺留於瀏覽器儲存空間的 API Key
+    try {
+      localStorage.removeItem('nblm_gemini_api_key');
+      sessionStorage.removeItem('nblm_gemini_api_key');
+    } catch (_) {}
+
+    function setStatus(msg) {
+      if (statusMessage) {
+        statusMessage.textContent = msg;
+      }
+    }
+
+    function loadImageElement(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject(e);
+        img.src = src;
+      });
+    }
+
+    function rgbToHexJs(r, g, b) {
+      return [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+
+    /**
+     * 純前端無痕像素修復演算法 (Stroke-Mask + Harmonic Boundary Diffusion Inpainting)
+     * 只針對與周圍背景有色差的「文字/浮水印筆畫像素 (加 2px 抗鋸齒邊緣)」進行局部鄰域調和擴散修復，
+     * 絕不塗抹整塊矩形區域，徹底解決浮水印或文字去除後留下異色方塊的問題！
+     */
+    function inpaintCanvasRegion(ctx, canvasW, canvasH, rx0, ry0, rw, rh, mode = 'hybrid') {
+      const x0 = Math.max(0, Math.round(rx0));
+      const y0 = Math.max(0, Math.round(ry0));
+      const x1 = Math.min(canvasW, Math.round(rx0 + rw));
+      const y1 = Math.min(canvasH, Math.round(ry0 + rh));
+      if (x1 <= x0 + 2 || y1 <= y0 + 2) return;
+
+      const pad = 5;
+      const sx0 = Math.max(0, x0 - pad);
+      const sy0 = Math.max(0, y0 - pad);
+      const sx1 = Math.min(canvasW, x1 + pad);
+      const sy1 = Math.min(canvasH, y1 + pad);
+      const sw = sx1 - sx0;
+      const sh = sy1 - sy0;
+      const innerX0 = x0 - sx0;
+      const innerY0 = y0 - sy0;
+      const innerX1 = x1 - sx0;
+      const innerY1 = y1 - sy0;
+
+      const imgDataObj = ctx.getImageData(sx0, sy0, sw, sh);
+      const data = imgDataObj.data;
+
+      // 1. 針對每一行/列計算上下邊界乾淨背景參考色 (支援漸層、暗色主題、雙色背景)
+      const topR = new Float32Array(sw);
+      const topG = new Float32Array(sw);
+      const topB = new Float32Array(sw);
+      const botR = new Float32Array(sw);
+      const botG = new Float32Array(sw);
+      const botB = new Float32Array(sw);
+
+      for (let x = 0; x < sw; x++) {
+        const xStart = Math.max(0, x - 3);
+        const xEnd = Math.min(sw - 1, x + 3);
+        let tr = 0, tg = 0, tb = 0, tc = 0;
+        let br = 0, bg = 0, bb = 0, bc = 0;
+        const topMaxY = Math.max(1, innerY0);
+        const botMinY = Math.min(sh - 1, innerY1);
+
+        for (let nx = xStart; nx <= xEnd; nx++) {
+          for (let ny = 0; ny < topMaxY; ny++) {
+            const off = (ny * sw + nx) * 4;
+            tr += data[off]; tg += data[off + 1]; tb += data[off + 2]; tc++;
+          }
+          for (let ny = botMinY; ny < sh; ny++) {
+            const off = (ny * sw + nx) * 4;
+            br += data[off]; bg += data[off + 1]; bb += data[off + 2]; bc++;
+          }
+        }
+        topR[x] = tc > 0 ? tr / tc : 255;
+        topG[x] = tc > 0 ? tg / tc : 255;
+        topB[x] = tc > 0 ? tb / tc : 255;
+        botR[x] = bc > 0 ? br / bc : topR[x];
+        botG[x] = bc > 0 ? bg / bc : topG[x];
+        botB[x] = bc > 0 ? bb / bc : topB[x];
+      }
+
+      // 若使用者明確指定「純色塊覆蓋 (solid)」，才使用雙線性漸層底色填滿
+      if (mode === 'solid') {
+        for (let y = innerY0; y < innerY1; y++) {
+          const t = sh > 1 ? y / (sh - 1) : 0;
+          for (let x = innerX0; x < innerX1; x++) {
+            const off = (y * sw + x) * 4;
+            data[off] = Math.round(topR[x] * (1 - t) + botR[x] * t);
+            data[off + 1] = Math.round(topG[x] * (1 - t) + botG[x] * t);
+            data[off + 2] = Math.round(topB[x] * (1 - t) + botB[x] * t);
+          }
+        }
+        ctx.putImageData(imgDataObj, sx0, sy0);
+        return;
+      }
+
+      // 2. 偵測真正的文字或浮水印筆畫像素 (與局部背景色差 > 12 的像素)
+      const rawMask = new Uint8Array(sw * sh);
+      for (let y = innerY0; y < innerY1; y++) {
+        const t = sh > 1 ? y / (sh - 1) : 0;
+        for (let x = innerX0; x < innerX1; x++) {
+          const idx = y * sw + x;
+          const off = idx * 4;
+          const refR = topR[x] * (1 - t) + botR[x] * t;
+          const refG = topG[x] * (1 - t) + botG[x] * t;
+          const refB = topB[x] * (1 - t) + botB[x] * t;
+          const dist = Math.hypot(data[off] - refR, data[off + 1] - refG, data[off + 2] - refB);
+          if (dist > 12) {
+            rawMask[idx] = 1;
+          }
+        }
+      }
+
+      // 3. 將筆畫遮罩外擴 2px (涵蓋文字邊緣的抗鋸齒半透明像素)，其餘 85% 原圖背景像素完全不更動！
+      const mask = new Uint8Array(sw * sh);
+      const maskIndices = [];
+      const dilateR = 2;
+      for (let y = innerY0; y < innerY1; y++) {
+        for (let x = innerX0; x < innerX1; x++) {
+          let hit = 0;
+          for (let dy = -dilateR; dy <= dilateR && !hit; dy++) {
+            const ny = y + dy;
+            if (ny < innerY0 || ny >= innerY1) continue;
+            for (let dx = -dilateR; dx <= dilateR; dx++) {
+              const nx = x + dx;
+              if (nx >= innerX0 && nx < innerX1 && rawMask[ny * sw + nx]) {
+                hit = 1;
+                break;
+              }
+            }
+          }
+          if (hit) {
+            const idx = y * sw + x;
+            mask[idx] = 1;
+            maskIndices.push(idx);
+          }
+        }
+      }
+
+      if (maskIndices.length === 0) return;
+
+      // 4. 先以局部插值底色初始化筆畫像素，再執行 14 次 Harmonic 鄰域擴散平滑，讓筆畫無縫融入周圍 1px 的真實原圖像素
+      const bufR = new Float32Array(sw * sh);
+      const bufG = new Float32Array(sw * sh);
+      const bufB = new Float32Array(sw * sh);
+      for (let i = 0; i < sw * sh; i++) {
+        const off = i * 4;
+        bufR[i] = data[off];
+        bufG[i] = data[off + 1];
+        bufB[i] = data[off + 2];
+      }
+
+      for (let k = 0; k < maskIndices.length; k++) {
+        const idx = maskIndices[k];
+        const y = Math.floor(idx / sw);
+        const x = idx % sw;
+        const t = sh > 1 ? y / (sh - 1) : 0;
+        bufR[idx] = topR[x] * (1 - t) + botR[x] * t;
+        bufG[idx] = topG[x] * (1 - t) + botG[x] * t;
+        bufB[idx] = topB[x] * (1 - t) + botB[x] * t;
+      }
+
+      for (let iter = 0; iter < 14; iter++) {
+        for (let k = 0; k < maskIndices.length; k++) {
+          const idx = maskIndices[k];
+          const y = Math.floor(idx / sw);
+          const x = idx % sw;
+          let sr = 0, sg = 0, sb = 0, wSum = 0;
+
+          if (y > 0) { const n = idx - sw; sr += bufR[n] * 2; sg += bufG[n] * 2; sb += bufB[n] * 2; wSum += 2; }
+          if (y < sh - 1) { const n = idx + sw; sr += bufR[n] * 2; sg += bufG[n] * 2; sb += bufB[n] * 2; wSum += 2; }
+          if (x > 0) { const n = idx - 1; sr += bufR[n] * 2; sg += bufG[n] * 2; sb += bufB[n] * 2; wSum += 2; }
+          if (x < sw - 1) { const n = idx + 1; sr += bufR[n] * 2; sg += bufG[n] * 2; sb += bufB[n] * 2; wSum += 2; }
+
+          if (y > 0 && x > 0) { const n = idx - sw - 1; sr += bufR[n]; sg += bufG[n]; sb += bufB[n]; wSum += 1; }
+          if (y > 0 && x < sw - 1) { const n = idx - sw + 1; sr += bufR[n]; sg += bufG[n]; sb += bufB[n]; wSum += 1; }
+          if (y < sh - 1 && x > 0) { const n = idx + sw - 1; sr += bufR[n]; sg += bufG[n]; sb += bufB[n]; wSum += 1; }
+          if (y < sh - 1 && x < sw - 1) { const n = idx + sw + 1; sr += bufR[n]; sg += bufG[n]; sb += bufB[n]; wSum += 1; }
+
+          if (wSum > 0) {
+            bufR[idx] = sr / wSum;
+            bufG[idx] = sg / wSum;
+            bufB[idx] = sb / wSum;
+          }
+        }
+      }
+
+      for (let k = 0; k < maskIndices.length; k++) {
+        const idx = maskIndices[k];
+        const off = idx * 4;
+        data[off] = Math.round(bufR[idx]);
+        data[off + 1] = Math.round(bufG[idx]);
+        data[off + 2] = Math.round(bufB[idx]);
+      }
+
+      ctx.putImageData(imgDataObj, sx0, sy0);
+    }
+
+    // 根據目前投影片的所有已圈選區塊 (與去浮水印設定)，從原始圖片動態合成去字底圖
+    // 優點：當刪除任何圈選框時，該位置底下的原圖文字會 100% 無損恢復！
+    async function rebuildSlideCleanImage(slide) {
+      const img = await loadImageElement(slide.origBase64);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+
+      const mode = inpaintModeSelect ? inpaintModeSelect.value : 'hybrid';
+
+      for (let i = 0; i < slide.blocks.length; i++) {
+        const b = slide.blocks[i];
+        const ex0 = b.erase_xmin !== undefined ? b.erase_xmin : b.xmin;
+        const ey0 = b.erase_ymin !== undefined ? b.erase_ymin : b.ymin;
+        const ex1 = b.erase_xmax !== undefined ? b.erase_xmax : b.xmax;
+        const ey1 = b.erase_ymax !== undefined ? b.erase_ymax : b.ymax;
+        if (b.patchCleanBase64) {
+          const patchImg = await loadImageElement(b.patchCleanBase64);
+          ctx.drawImage(patchImg, ex0, ey0, ex1 - ex0, ey1 - ey0);
+        } else {
+          inpaintCanvasRegion(ctx, canvas.width, canvas.height, ex0, ey0, ex1 - ex0, ey1 - ey0, mode);
+        }
+      }
+
+      const removeWm = removeWatermarkCheckbox ? removeWatermarkCheckbox.checked : true;
+      if (removeWm) {
+        const wx0 = Math.round(canvas.width * 0.825);
+        const wy0 = Math.round(canvas.height * 0.915);
+        const ww = Math.round(canvas.width * 0.168);
+        const wh = Math.round(canvas.height * 0.075);
+        inpaintCanvasRegion(ctx, canvas.width, canvas.height, wx0, wy0, ww, wh, 'hybrid');
+      }
+
+      slide.cleanBase64 = canvas.toDataURL('image/png');
+      slide.status = slide.blocks.length > 0 ? 'done' : 'pending';
+    }
+
+    // 處理檔案匯入 (匯入後立即進入滑鼠自由圈選模式，無須漫長等待)
+    async function handleFiles(fileList) {
+      if (!fileList || fileList.length === 0) return;
+      setStatus('正在讀取與高解析度渲染簡報頁面中...');
+      const newSlides = [];
+
+      try {
+        for (let i = 0; i < fileList.length; i++) {
+          if (newSlides.length >= MAX_SLIDE_COUNT) {
+            setStatus(`已達單次最大投影片頁數上限 (${MAX_SLIDE_COUNT} 頁)，其餘頁面已略過。`);
+            break;
+          }
+          const file = fileList[i];
+          if (file.size > MAX_FILE_SIZE_BYTES) {
+            throw new Error(`檔案「${file.name}」超過 150 MB 安全容量上限。`);
+          }
+          const lowerName = file.name.toLowerCase();
+          const mimeType = (file.type || '').toLowerCase();
+
+          if (lowerName.endsWith('.svg') || mimeType === 'image/svg+xml') {
+            throw new Error(`基於安全考量不支援 SVG 向量圖檔（${file.name}），請上傳 PNG、JPG 或 WebP 點陣圖。`);
+          }
+
+          if (lowerName.endsWith('.pdf')) {
+            const pdfSlides = await parsePdfFile(file, MAX_SLIDE_COUNT - newSlides.length);
+            newSlides.push(...pdfSlides);
+          } else if (lowerName.endsWith('.pptx')) {
+            const pptxSlides = await parsePptxFile(file, MAX_SLIDE_COUNT - newSlides.length);
+            newSlides.push(...pptxSlides);
+          } else if (ALLOWED_IMAGE_MIMES.has(mimeType) || /\.(png|jpg|jpeg|webp|bmp)$/i.test(lowerName)) {
+            const imgSlide = await parseImageFile(file);
+            if (imgSlide) newSlides.push(imgSlide);
+          }
+        }
+      } catch (err) {
+        console.error('解析檔案發生錯誤:', err);
+        setStatus(`解析檔案時發生錯誤：${err.message}`);
+        return;
+      }
+
+      if (newSlides.length === 0) {
+        setStatus('未偵測到支援的投影片頁面，請確認檔案格式為 PDF、圖片型 PPTX 或點陣圖片檔。');
+        return;
+      }
+
+      // 若匯入檔案非 16:9（例如 4:3 或 A4 直式一般文件），預設關閉「抹除右下角浮水印」以避免誤擦右下角頁碼
+      const firstMetrics = getSlideMetrics(newSlides[0]);
+      if (removeWatermarkCheckbox) {
+        removeWatermarkCheckbox.checked = firstMetrics.is16x9;
+      }
+
+      state.slides = [];
+      for (let idx = 0; idx < newSlides.length; idx++) {
+        const s = newSlides[idx];
+        const slideObj = {
+          ...s,
+          id: 'slide_' + idx + '_' + Date.now(),
+          index: idx,
+          cleanBase64: null,
+          blocks: [],
+          status: 'pending'
+        };
+        await rebuildSlideCleanImage(slideObj);
+        state.slides.push(slideObj);
+      }
+
+      state.currentSlideIndex = 0;
+      state.selectedBlockId = null;
+
+      if (uploadDropzone) uploadDropzone.style.display = 'none';
+      if (slideStageWrapper) slideStageWrapper.style.display = 'inline-block';
+      if (analyzeAllBtn) analyzeAllBtn.disabled = false;
+      if (analyzeCurrentBtn) analyzeCurrentBtn.disabled = false;
+      if (clearSlideBlocksBtn) clearSlideBlocksBtn.disabled = false;
+      if (exportPptxBtn) exportPptxBtn.disabled = false;
+
+      renderSlideList();
+      renderCurrentSlideStage();
+      setStatus(`已載入 ${state.slides.length} 頁投影片！請直接在畫布上「按住滑鼠左鍵拖曳框選」您想修改的文字（或點擊上方「整頁自動辨識此頁」）。`);
+    }
+
+    async function parseImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const safeDataUrl = sanitizeImageDataUrl(e.target.result);
+          if (!safeDataUrl) {
+            reject(new Error(`圖片格式驗證失敗：${file.name}`));
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            resolve({
+              name: file.name,
+              origBase64: safeDataUrl,
+              width: img.naturalWidth,
+              height: img.naturalHeight
+            });
+          };
+          img.onerror = () => reject(new Error(`無法解碼圖片：${file.name}`));
+          img.src = safeDataUrl;
+        };
+        reader.onerror = () => reject(new Error(`讀取圖片失敗：${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function parsePdfFile(file, maxRemaining = MAX_SLIDE_COUNT) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const slides = [];
+      const totalPages = Math.min(pdf.numPages, maxRemaining);
+
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        setStatus(`正在高解析度渲染 PDF 第 ${pageNum} / ${totalPages} 頁...`);
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        slides.push({
+          name: `${file.name} - 第 ${pageNum} 頁`,
+          origBase64: canvas.toDataURL('image/png'),
+          width: canvas.width,
+          height: canvas.height
+        });
+      }
+      return slides;
+    }
+
+    async function parsePptxFile(file, maxRemaining = MAX_SLIDE_COUNT) {
+      const arrayBuffer = await file.arrayBuffer();
+      const zip = await window.JSZip.loadAsync(arrayBuffer);
+      const mediaFiles = [];
+
+      zip.forEach((relativePath, zipEntry) => {
+        if (
+          !zipEntry.dir &&
+          relativePath.startsWith('ppt/media/') &&
+          /\.(png|jpg|jpeg|webp)$/i.test(relativePath)
+        ) {
+          mediaFiles.push(zipEntry);
+        }
+      });
+
+      mediaFiles.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      );
+
+      const slides = [];
+      const limit = Math.min(mediaFiles.length, maxRemaining);
+      for (let i = 0; i < limit; i++) {
+        const entry = mediaFiles[i];
+        const base64Data = await entry.async('base64');
+        if (base64Data.length > 40 * 1024 * 1024) {
+          throw new Error(`PPTX 內部圖片「${entry.name}」解壓縮後超過安全容量上限。`);
+        }
+        const ext = entry.name.split('.').pop().toLowerCase();
+        const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const dataUrl = `data:${mime};base64,${base64Data}`;
+
+        const dim = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          img.onerror = () => reject(new Error(`無法載入 PPTX 媒體檔：${entry.name}`));
+          img.src = dataUrl;
+        });
+
+        slides.push({
+          name: `投影片 ${i + 1}`,
+          origBase64: dataUrl,
+          width: dim.w,
+          height: dim.h
+        });
+      }
+      return slides;
+    }
+
+    // 處理使用者滑鼠拖曳圈選之單一矩形區域 (xmin, ymin, xmax, ymax 為原始圖片像素座標)
+    async function processUserSelectedRegion(slide, xmin, ymin, xmax, ymax) {
+      const boxW = xmax - xmin;
+      const boxH = ymax - ymin;
+      if (boxW < 8 || boxH < 8) return;
+
+      setStatus('正在辨識您圈選的文字區塊並自動抹除底圖字跡...');
+
+      const img = await loadImageElement(slide.origBase64);
+      const pad = 6;
+      const cropX0 = Math.max(0, xmin - pad);
+      const cropY0 = Math.max(0, ymin - pad);
+      const cropX1 = Math.min(img.naturalWidth, xmax + pad);
+      const cropY1 = Math.min(img.naturalHeight, ymax + pad);
+      const cropW = cropX1 - cropX0;
+      const cropH = cropY1 - cropY0;
+      const padLeft = xmin - cropX0;
+      const padTop = ymin - cropY0;
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = cropW;
+      cropCanvas.height = cropH;
+      const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+      cropCtx.drawImage(img, cropX0, cropY0, cropW, cropH, 0, 0, cropW, cropH);
+      const cropBase64 = cropCanvas.toDataURL('image/png');
+
+      const slideMetrics = getSlideMetrics(slide);
+      let recognizedText = '請輸入文字';
+      let fontSizePt = Math.max(10, Math.min(72, Math.round((boxH / slide.height) * slideMetrics.ptH * 0.65)));
+      let fontColor = '0F172A';
+      let bgColor = 'FFFFFF';
+      let isBold = fontSizePt >= 20;
+      let patchCleanBase64 = null;
+      let tightDx = 0;
+      let tightDy = 0;
+      let tightW = boxW;
+      let tightH = boxH;
+
+      // 無論本機伺服器是否啟動，皆先在前端 Canvas 執行像素筆畫水平投影與緊密邊界分析
+      const imgData = cropCtx.getImageData(0, 0, cropW, cropH).data;
+      let rSum = 0, gSum = 0, bSum = 0, bCount = 0;
+      for (let py = 0; py < cropH; py++) {
+        for (let px = 0; px < cropW; px++) {
+          if (py < padTop || py >= padTop + boxH || px < padLeft || px >= padLeft + boxW) {
+            const off = (py * cropW + px) * 4;
+            rSum += imgData[off];
+            gSum += imgData[off + 1];
+            bSum += imgData[off + 2];
+            bCount++;
+          }
+        }
+      }
+      const bgR = bCount > 0 ? Math.round(rSum / bCount) : 255;
+      const bgG = bCount > 0 ? Math.round(gSum / bCount) : 255;
+      const bgB = bCount > 0 ? Math.round(bSum / bCount) : 255;
+      bgColor = rgbToHexJs(bgR, bgG, bgB);
+
+      let maxDist = -1;
+      let fgR = 15, fgG = 23, fgB = 42;
+      let minTx = boxW, minTy = boxH, maxTx = 0, maxTy = 0;
+      const rowCounts = new Int32Array(boxH);
+      for (let py = padTop; py < padTop + boxH; py++) {
+        for (let px = padLeft; px < padLeft + boxW; px++) {
+          const off = (py * cropW + px) * 4;
+          const pr = imgData[off], pg = imgData[off + 1], pb = imgData[off + 2];
+          const dist = Math.hypot(pr - bgR, pg - bgG, pb - bgB);
+          if (dist > maxDist) {
+            maxDist = dist;
+            fgR = pr; fgG = pg; fgB = pb;
+          }
+          if (dist > 32) {
+            const lx = px - padLeft;
+            const ly = py - padTop;
+            rowCounts[ly]++;
+            if (lx < minTx) minTx = lx;
+            if (ly < minTy) minTy = ly;
+            if (lx > maxTx) maxTx = lx;
+            if (ly > maxTy) maxTy = ly;
+          }
+        }
+      }
+      fontColor = rgbToHexJs(fgR, fgG, fgB);
+
+      if (maxTx > minTx && maxTy > minTy) {
+        tightDx = minTx;
+        tightDy = minTy;
+        tightW = Math.max(8, maxTx - minTx + 1);
+        tightH = Math.max(8, maxTy - minTy + 1);
+      }
+
+      // 純前端獨立運作模式：放大 2 倍並加白邊以提升瀏覽器 Tesseract.js 局部小圖辨識準確率，同時自動消除中文字間多餘空白
+      try {
+        if (window.Tesseract) {
+          const scale = boxH < 45 ? 2 : 1;
+          const ocrPad = 18;
+          const ocrCanvas = document.createElement('canvas');
+          ocrCanvas.width = cropW * scale + ocrPad * 2;
+          ocrCanvas.height = cropH * scale + ocrPad * 2;
+          const ocrCtx = ocrCanvas.getContext('2d');
+          ocrCtx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
+          ocrCtx.fillRect(0, 0, ocrCanvas.width, ocrCanvas.height);
+          ocrCtx.drawImage(cropCanvas, 0, 0, cropW, cropH, ocrPad, ocrPad, cropW * scale, cropH * scale);
+
+          const worker = await getTesseractWorker();
+          const ret = await worker.recognize(ocrCanvas.toDataURL('image/png'));
+          let t = (ret && ret.data && ret.data.text) ? ret.data.text.trim() : '';
+          if (t) {
+            // 消除 Tesseract 在繁體中文字與全形標點之間常誤加的半形空格
+            t = t.replace(/([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])[ \t]+([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, '$1$2');
+            t = t.replace(/([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])[ \t]+([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, '$1$2');
+            recognizedText = t;
+          }
+        }
+      } catch (ocrErr) {
+        console.warn('Tesseract 局部辨識略過:', ocrErr);
+      }
+
+      // 執行前端強制字級雙重校準 (水平投影單行筆畫高度 + 單行等效字數寬度上限)，確保即使舊版背景服務未重啟也不會出現超大字體
+      if (maxTx > minTx && maxTy > minTy) {
+        const pxTightDy = minTy;
+        const pxTightW = Math.max(8, maxTx - minTx + 1);
+        const pxTightH = Math.max(8, maxTy - minTy + 1);
+        const minActivePx = Math.max(1, Math.floor(pxTightW * 0.015));
+        const activeRows = new Uint8Array(pxTightH);
+        for (let r = 0; r < pxTightH; r++) {
+          if (rowCounts[pxTightDy + r] >= minActivePx) activeRows[r] = 1;
+        }
+        const bridged = new Uint8Array(activeRows);
+        for (let r = 1; r < pxTightH - 1; r++) {
+          if (!bridged[r]) {
+            const upHas = activeRows[r - 1] || (r >= 2 && activeRows[r - 2]) || (r >= 3 && activeRows[r - 3]);
+            const dnHas = activeRows[r + 1] || (r + 2 < pxTightH && activeRows[r + 2]) || (r + 3 < pxTightH && activeRows[r + 3]);
+            if (upHas && dnHas) bridged[r] = 1;
+          }
+        }
+        const bands = [];
+        let inBand = false, bStart = 0;
+        for (let r = 0; r < pxTightH; r++) {
+          if (bridged[r] && !inBand) {
+            inBand = true;
+            bStart = r;
+          } else if (!bridged[r] && inBand) {
+            inBand = false;
+            if (r - bStart >= 5) bands.push(r - bStart);
+          }
+        }
+        if (inBand && (pxTightH - bStart >= 5)) bands.push(pxTightH - bStart);
+        bands.sort((a, b) => a - b);
+        let singleLinePx = bands.length > 0 ? bands[Math.floor(bands.length / 2)] : pxTightH;
+
+        const textLines = (recognizedText || '').split('\n').map((s) => s.trim()).filter(Boolean);
+        if (textLines.length > 1) {
+          singleLinePx = Math.min(singleLinePx, (pxTightH / textLines.length) * 0.88);
+        }
+
+        let ptEst = (singleLinePx / Math.max(1, slide.height)) * slideMetrics.ptH * 0.64;
+        if (textLines.length > 0 && recognizedText !== '請輸入文字') {
+          let maxEm = 0;
+          for (const ln of textLines) {
+            let em = 0;
+            for (const ch of ln) {
+              em += ch.charCodeAt(0) > 127 ? 1.0 : (/\s/.test(ch) ? 0.3 : 0.55);
+            }
+            if (em > maxEm) maxEm = em;
+          }
+          if (maxEm >= 2.0) {
+            const charPxW = Math.max(tightW, pxTightW) / maxEm;
+            const ptByW = (charPxW / Math.max(1, slide.width)) * slideMetrics.ptW * 0.90;
+            ptEst = Math.min(ptEst, ptByW * 1.08);
+          }
+        }
+        const clientCalibratedPt = Math.max(8, Math.min(60, Math.round(ptEst)));
+        fontSizePt = Math.min(fontSizePt, clientCalibratedPt);
+        isBold = fontSizePt >= 20;
+      }
+
+      const textXmin = xmin + tightDx;
+      const textYmin = ymin + tightDy;
+      const textXmax = textXmin + tightW;
+      const textYmax = textYmin + tightH;
+
+      const newBlockId = 'block_region_' + Date.now();
+      const newBlock = {
+        id: newBlockId,
+        text: recognizedText,
+        xmin: textXmin,
+        ymin: textYmin,
+        xmax: textXmax,
+        ymax: textYmax,
+        erase_xmin: xmin,
+        erase_ymin: ymin,
+        erase_xmax: xmax,
+        erase_ymax: ymax,
+        x_pct: Number(((textXmin / slide.width) * 100).toFixed(3)),
+        y_pct: Number(((textYmin / slide.height) * 100).toFixed(3)),
+        w_pct: Number(((tightW / slide.width) * 100).toFixed(3)),
+        h_pct: Number(((tightH / slide.height) * 100).toFixed(3)),
+        fontSizePt,
+        fontColor,
+        bgColor,
+        isBold,
+        patchCleanBase64,
+        score: 1.0
+      };
+
+      slide.blocks.push(newBlock);
+      state.selectedBlockId = newBlockId;
+
+      await rebuildSlideCleanImage(slide);
+      renderSlideList();
+      renderCurrentSlideStage();
+
+      // 自動將游標聚焦至新圈選的文字編輯框，方便使用者直接打字修改
+      const ta = blocksEditorContainer.querySelector(`textarea[data-input-text="${escapeCssSelector(newBlockId)}"]`);
+      if (ta) {
+        ta.focus();
+        ta.select();
+      }
+      setStatus(`已完成圈選區域辨識與底圖抹除！您可直接在右側修改文字內容，或繼續在畫布上拖曳圈選其他文字。`);
+    }
+
+    let tesseractWorkerPromise = null;
+    async function getTesseractWorker() {
+      if (!window.Tesseract) {
+        throw new Error('瀏覽器尚未載入 Tesseract.js 離線 OCR 元件。');
+      }
+      if (!tesseractWorkerPromise) {
+        tesseractWorkerPromise = window.Tesseract.createWorker(['chi_tra', 'eng']);
+      }
+      return tesseractWorkerPromise;
+    }
+
+    async function analyzeSlideBrowserTesseractFallback(slide, removeWatermark) {
+      setStatus('正在使用瀏覽器內建離線 OCR (Tesseract.js) 進行整頁辨識...');
+      const worker = await getTesseractWorker();
+      const ret = await worker.recognize(slide.origBase64);
+      const lines = (ret && ret.data && ret.data.lines) ? ret.data.lines : [];
+
+      const img = await loadImageElement(slide.origBase64);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+
+      const outBlocks = [];
+      let blockIdx = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        let text = (line.text || '').replace(/\s+/g, ' ').trim();
+        text = text.replace(/([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])[ \t]+([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, '$1$2');
+        text = text.replace(/([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])[ \t]+([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, '$1$2');
+        if (!text || line.confidence < 35) continue;
+
+        const bbox = line.bbox;
+        const xmin = Math.max(0, bbox.x0);
+        const ymin = Math.max(0, bbox.y0);
+        const xmax = Math.min(canvas.width, bbox.x1);
+        const ymax = Math.min(canvas.height, bbox.y1);
+        const bw = xmax - xmin;
+        const bh = ymax - ymin;
+        if (bw < 4 || bh < 4) continue;
+
+        const isWm = (text.toLowerCase().includes('notebooklm') && ymin > canvas.height * 0.8) ||
+                     (xmin > canvas.width * 0.82 && ymin > canvas.height * 0.91 && bh < canvas.height * 0.06);
+
+        const sx = Math.max(0, xmin - 3);
+        const sy = Math.max(0, ymin - 3);
+        const sw = Math.min(canvas.width - sx, bw + 6);
+        const sh = Math.min(canvas.height - sy, bh + 6);
+        const imgData = ctx.getImageData(sx, sy, sw, sh).data;
+
+        let rSum = 0, gSum = 0, bSum = 0, borderCount = 0;
+        for (let py = 0; py < sh; py++) {
+          for (let px = 0; px < sw; px++) {
+            if (py < 3 || py >= sh - 3 || px < 3 || px >= sw - 3) {
+              const offset = (py * sw + px) * 4;
+              rSum += imgData[offset];
+              gSum += imgData[offset + 1];
+              bSum += imgData[offset + 2];
+              borderCount++;
+            }
+          }
+        }
+        const bgR = borderCount > 0 ? Math.round(rSum / borderCount) : 255;
+        const bgG = borderCount > 0 ? Math.round(gSum / borderCount) : 255;
+        const bgB = borderCount > 0 ? Math.round(bSum / borderCount) : 255;
+
+        let maxDist = -1;
+        let fgR = 15, fgG = 23, fgB = 42;
+        for (let py = 3; py < sh - 3; py += 2) {
+          for (let px = 3; px < sw - 3; px += 2) {
+            const offset = (py * sw + px) * 4;
+            const pr = imgData[offset], pg = imgData[offset + 1], pb = imgData[offset + 2];
+            const dist = Math.hypot(pr - bgR, pg - bgG, pb - bgB);
+            if (dist > maxDist) {
+              maxDist = dist;
+              fgR = pr; fgG = pg; fgB = pb;
+            }
+          }
+        }
+
+        if (!isWm || removeWatermark) {
+          const mode = inpaintModeSelect ? inpaintModeSelect.value : 'hybrid';
+          inpaintCanvasRegion(ctx, canvas.width, canvas.height, xmin, ymin, bw, bh, mode);
+        }
+
+        if (!isWm) {
+          const fallbackMetrics = getSlideMetrics({ width: canvas.width, height: canvas.height });
+          let ptEst = (bh / canvas.height) * fallbackMetrics.ptH * 0.62;
+          let em = 0;
+          for (const ch of text) {
+            em += ch.charCodeAt(0) > 127 ? 1.0 : (/\s/.test(ch) ? 0.3 : 0.55);
+          }
+          if (em >= 2.0) {
+            const ptByW = ((bw / em) / canvas.width) * fallbackMetrics.ptW * 0.90;
+            ptEst = Math.min(ptEst, ptByW * 1.08);
+          }
+          const fontSizePt = Math.max(8, Math.min(60, Math.round(ptEst)));
+          outBlocks.push({
+            id: 'block_' + (blockIdx++),
+            text,
+            xmin,
+            ymin,
+            xmax,
+            ymax,
+            x_pct: Number(((xmin / canvas.width) * 100).toFixed(3)),
+            y_pct: Number(((ymin / canvas.height) * 100).toFixed(3)),
+            w_pct: Number(((bw / canvas.width) * 100).toFixed(3)),
+            h_pct: Number(((bh / canvas.height) * 100).toFixed(3)),
+            fontSizePt,
+            fontColor: rgbToHexJs(fgR, fgG, fgB),
+            bgColor: rgbToHexJs(bgR, bgG, bgB),
+            isBold: fontSizePt >= 20,
+            score: Number((line.confidence / 100).toFixed(2))
+          });
+        }
+      }
+
+      if (removeWatermark) {
+        const wx0 = Math.round(canvas.width * 0.825);
+        const wy0 = Math.round(canvas.height * 0.915);
+        const ww = Math.round(canvas.width * 0.168);
+        const wh = Math.round(canvas.height * 0.075);
+        inpaintCanvasRegion(ctx, canvas.width, canvas.height, wx0, wy0, ww, wh, 'hybrid');
+      }
+
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        clean_image_base64: canvas.toDataURL('image/png'),
+        blocks: outBlocks
+      };
+    }
+
+    async function analyzeSlideAtIndex(index) {
+      const slide = state.slides[index];
+      if (!slide) return;
+
+      const removeWatermark = removeWatermarkCheckbox ? removeWatermarkCheckbox.checked : true;
+
+      slide.status = 'working';
+      renderSlideList();
+      if (index === state.currentSlideIndex) {
+        setStatus(`正在對第 ${index + 1} 頁進行本機離線整頁辨識與背景去字...`);
+      }
+
+      try {
+        const result = await analyzeSlideBrowserTesseractFallback(slide, removeWatermark);
+
+        const safeCleanUrl = sanitizeImageDataUrl(result.clean_image_base64);
+        if (safeCleanUrl) {
+          slide.cleanBase64 = safeCleanUrl;
+        }
+        slide.width = sanitizeNumber(result.width, 1, 16384, slide.width);
+        slide.height = sanitizeNumber(result.height, 1, 16384, slide.height);
+        slide.blocks = (Array.isArray(result.blocks) ? result.blocks : []).map((b, bIdx) => ({
+          id: sanitizeId(b.id, `block_${bIdx}`),
+          text: String(b.text || ''),
+          xmin: sanitizeNumber(b.xmin, 0, slide.width, 0),
+          ymin: sanitizeNumber(b.ymin, 0, slide.height, 0),
+          xmax: sanitizeNumber(b.xmax, 0, slide.width, 100),
+          ymax: sanitizeNumber(b.ymax, 0, slide.height, 40),
+          x_pct: sanitizeNumber(b.x_pct, 0, 100, 0),
+          y_pct: sanitizeNumber(b.y_pct, 0, 100, 0),
+          w_pct: sanitizeNumber(b.w_pct, 0.5, 100, 10),
+          h_pct: sanitizeNumber(b.h_pct, 0.5, 100, 5),
+          fontSizePt: sanitizeNumber(b.fontSizePt, 6, 120, 16),
+          fontColor: sanitizeHexColor(b.fontColor, '0F172A'),
+          bgColor: sanitizeHexColor(b.bgColor, 'FFFFFF'),
+          isBold: Boolean(b.isBold),
+          score: sanitizeNumber(b.score, 0, 1, 1)
+        }));
+        slide.status = 'done';
+        setStatus(`第 ${index + 1} 頁整頁辨識完成（共 ${slide.blocks.length} 個區塊）。您可刪除不需修改的區塊以還原該處原圖，或用滑鼠補圈選。`);
+      } catch (err) {
+        console.error(err);
+        slide.status = 'pending';
+        setStatus(`第 ${index + 1} 頁辨識發生錯誤：${err.message}`);
+      }
+
+      renderSlideList();
+      if (index === state.currentSlideIndex) {
+        renderCurrentSlideStage();
+      }
+    }
+
+    async function analyzeAllSlides() {
+      if (state.isProcessingBatch || state.slides.length === 0) return;
+
+      state.isProcessingBatch = true;
+      if (analyzeAllBtn) analyzeAllBtn.disabled = true;
+
+      for (let i = 0; i < state.slides.length; i++) {
+        await analyzeSlideAtIndex(i);
+      }
+
+      state.isProcessingBatch = false;
+      if (analyzeAllBtn) analyzeAllBtn.disabled = false;
+      setStatus(`全部 ${state.slides.length} 頁投影片辨識完成！請點擊右上角「匯出可編輯 PPTX」。`);
+    }
+
+    function renderSlideList() {
+      if (!slideListContainer) return;
+      if (slideCountBadge) {
+        slideCountBadge.textContent = `${state.slides.length} 頁`;
+      }
+
+      const html = state.slides
+        .map((s, idx) => {
+          const isActive = idx === state.currentSlideIndex ? 'active' : '';
+          let statusLabel = '可圈選';
+          let statusClass = 'status-pending';
+          if (s.status === 'working') {
+            statusLabel = '辨識中...';
+            statusClass = 'status-working';
+          } else if (s.blocks.length > 0) {
+            statusLabel = `已改 ${s.blocks.length} 處`;
+            statusClass = 'status-done';
+          }
+
+          const safeThumbSrc = sanitizeImageDataUrl(s.cleanBase64 || s.origBase64);
+          return `
+            <div class="slide-thumb-card ${isActive}" data-slide-idx="${idx}">
+              <img class="slide-thumb-img" src="${escapeHtml(safeThumbSrc)}" alt="第 ${idx + 1} 頁" />
+              <div class="slide-thumb-meta">
+                <span>第 ${idx + 1} 頁</span>
+                <span class="status-dot ${statusClass}">${escapeHtml(statusLabel)}</span>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      slideListContainer.innerHTML = html;
+
+      const cards = slideListContainer.querySelectorAll('.slide-thumb-card');
+      cards.forEach((card) => {
+        card.addEventListener('click', () => {
+          const idx = parseInt(card.getAttribute('data-slide-idx'), 10);
+          if (!isNaN(idx)) {
+            state.currentSlideIndex = idx;
+            state.selectedBlockId = null;
+            renderSlideList();
+            renderCurrentSlideStage();
+          }
+        });
+      });
+    }
+
+    function renderCurrentSlideStage() {
+      const slide = state.slides[state.currentSlideIndex];
+      if (!slide || !stageBaseImage || !stageOverlayLayer) return;
+
+      if (state.viewMode === 'original' || !slide.cleanBase64) {
+        stageBaseImage.src = sanitizeImageDataUrl(slide.origBase64);
+      } else {
+        stageBaseImage.src = sanitizeImageDataUrl(slide.cleanBase64);
+      }
+
+      if (aspectRatioInfo) {
+        const metrics = getSlideMetrics(slide);
+        aspectRatioInfo.textContent = `比例：${metrics.ratioLabel} (${slide.width} × ${slide.height} px)`;
+      }
+
+      if (state.viewMode === 'reconstructed') {
+        stageOverlayLayer.style.display = 'block';
+        renderOverlayBoxes(slide);
+      } else {
+        stageOverlayLayer.style.display = 'none';
+      }
+
+      renderBlocksEditor(slide);
+    }
+
+    function renderOverlayBoxes(slide) {
+      if (!stageOverlayLayer || !stageBaseImage) return;
+
+      const rect = stageBaseImage.getBoundingClientRect();
+      const metrics = getSlideMetrics(slide);
+      const scaleFactor = rect.height > 0 ? rect.height / metrics.ptH : 1;
+
+      const boxesHtml = slide.blocks
+        .map((b) => {
+          const isSelected = b.id === state.selectedBlockId ? 'selected' : '';
+          const safeFontSizePt = sanitizeNumber(b.fontSizePt, 6, 120, 16);
+          const fontSizePx = Math.max(9, Math.round(safeFontSizePt * scaleFactor));
+          const fontWeight = b.isBold ? '700' : '400';
+          const safeXPct = sanitizeNumber(b.x_pct, 0, 100, 0);
+          const safeYPct = sanitizeNumber(b.y_pct, 0, 100, 0);
+          const safeWPct = sanitizeNumber(b.w_pct, 0.5, 100, 10);
+          const safeHPct = sanitizeNumber(b.h_pct, 0.5, 100, 5);
+          const safeColor = sanitizeHexColor(b.fontColor, '0F172A');
+
+          return `<div class="ocr-box ${isSelected}" data-block-id="${escapeHtml(b.id)}" style="left: ${safeXPct}%; top: ${safeYPct}%; width: ${Math.min(100 - safeXPct, safeWPct * 1.15)}%; min-height: ${safeHPct}%;"><span class="ocr-box-text" style="font-size: ${fontSizePx}px; color: #${safeColor}; font-weight: ${fontWeight};">${escapeHtml((b.text || '').trim())}</span></div>`;
+        })
+        .join('');
+
+      stageOverlayLayer.innerHTML = boxesHtml;
+
+      const boxEls = stageOverlayLayer.querySelectorAll('.ocr-box');
+      boxEls.forEach((el) => {
+        el.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          const bid = el.getAttribute('data-block-id');
+          state.selectedBlockId = bid;
+          const targetBlock = slide.blocks.find((item) => item.id === bid);
+          if (!targetBlock) return;
+
+          const imgRect = stageBaseImage.getBoundingClientRect();
+          const startClientX = e.clientX;
+          const startClientY = e.clientY;
+          const origXPct = targetBlock.x_pct;
+          const origYPct = targetBlock.y_pct;
+
+          const onMove = (moveEvt) => {
+            if (imgRect.width <= 0 || imgRect.height <= 0) return;
+            const dxPct = ((moveEvt.clientX - startClientX) / imgRect.width) * 100;
+            const dyPct = ((moveEvt.clientY - startClientY) / imgRect.height) * 100;
+            targetBlock.x_pct = Number(Math.max(0, Math.min(98, origXPct + dxPct)).toFixed(3));
+            targetBlock.y_pct = Number(Math.max(0, Math.min(98, origYPct + dyPct)).toFixed(3));
+            el.style.left = `${targetBlock.x_pct}%`;
+            el.style.top = `${targetBlock.y_pct}%`;
+          };
+
+          const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            renderOverlayBoxes(slide);
+            renderBlocksEditor(slide);
+            const cardEl = blocksEditorContainer.querySelector(`[data-card-id="${escapeCssSelector(bid)}"]`);
+            if (cardEl) {
+              cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          };
+
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        });
+      });
+    }
+
+    function renderBlocksEditor(slide) {
+      if (!blocksEditorContainer) return;
+      if (blockCountBadge) {
+        blockCountBadge.textContent = `${slide.blocks.length} 個區塊`;
+      }
+
+      if (slide.blocks.length === 0) {
+        blocksEditorContainer.innerHTML = `
+          <div style="padding: 24px 14px; text-align: center; color: var(--text-secondary); font-size: 13px; line-height: 1.7;">
+            <strong>此頁尚未圈選修改區塊</strong><br />
+            請直接在左側投影片畫面上<strong>「按住滑鼠左鍵拖曳框選」</strong>您想修改的文字，系統會自動抹除該處原字並在此處產生編輯框！<br /><br />
+            （未圈選的區域在匯出 PPTX 時會 100% 保持原圖畫質）
+          </div>
+        `;
+        return;
+      }
+
+      const cardsHtml = slide.blocks
+        .map((b, idx) => {
+          const isSelected = b.id === state.selectedBlockId ? 'selected' : '';
+          const safeFontSizePt = sanitizeNumber(b.fontSizePt, 6, 120, 16);
+          const safeColor = sanitizeHexColor(b.fontColor, '0F172A');
+          return `
+            <div class="block-card ${isSelected}" data-card-id="${escapeHtml(b.id)}">
+              <div class="block-meta-row">
+                <strong>文字區塊 #${idx + 1}</strong>
+                <button class="btn btn-danger" data-delete-id="${escapeHtml(b.id)}" type="button" title="刪除此文字框並還原底下原圖">刪除 (還原原圖)</button>
+              </div>
+              <textarea data-input-text="${escapeHtml(b.id)}">${escapeHtml(b.text)}</textarea>
+              <div class="block-meta-row">
+                <label class="color-input-group">
+                  <span>字級(pt):</span>
+                  <input type="number" min="6" max="120" value="${safeFontSizePt}" data-input-size="${escapeHtml(b.id)}" style="width: 58px;" />
+                </label>
+                <label class="color-input-group">
+                  <span>顏色:</span>
+                  <input type="color" value="#${safeColor}" data-input-color="${escapeHtml(b.id)}" />
+                </label>
+                <label class="color-input-group">
+                  <input type="checkbox" ${b.isBold ? 'checked' : ''} data-input-bold="${escapeHtml(b.id)}" />
+                  <span>粗體</span>
+                </label>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      blocksEditorContainer.innerHTML = cardsHtml;
+
+      blocksEditorContainer.querySelectorAll('textarea[data-input-text]').forEach((ta) => {
+        ta.addEventListener('input', () => {
+          const bid = ta.getAttribute('data-input-text');
+          const target = slide.blocks.find((item) => item.id === bid);
+          if (target) {
+            target.text = ta.value;
+            renderOverlayBoxes(slide);
+          }
+        });
+        ta.addEventListener('focus', () => {
+          const bid = ta.getAttribute('data-input-text');
+          state.selectedBlockId = bid;
+          renderOverlayBoxes(slide);
+        });
+      });
+
+      blocksEditorContainer.querySelectorAll('input[data-input-size]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          const bid = inp.getAttribute('data-input-size');
+          const target = slide.blocks.find((item) => item.id === bid);
+          if (target) {
+            target.fontSizePt = Math.max(6, parseInt(inp.value, 10) || 14);
+            renderOverlayBoxes(slide);
+          }
+        });
+      });
+
+      blocksEditorContainer.querySelectorAll('input[data-input-color]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          const bid = inp.getAttribute('data-input-color');
+          const target = slide.blocks.find((item) => item.id === bid);
+          if (target) {
+            target.fontColor = sanitizeHexColor(inp.value, '0F172A');
+            renderOverlayBoxes(slide);
+          }
+        });
+      });
+
+      blocksEditorContainer.querySelectorAll('input[data-input-bold]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const bid = inp.getAttribute('data-input-bold');
+          const target = slide.blocks.find((item) => item.id === bid);
+          if (target) {
+            target.isBold = inp.checked;
+            renderOverlayBoxes(slide);
+          }
+        });
+      });
+
+      blocksEditorContainer.querySelectorAll('button[data-delete-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const bid = btn.getAttribute('data-delete-id');
+          slide.blocks = slide.blocks.filter((item) => item.id !== bid);
+          await rebuildSlideCleanImage(slide);
+          renderOverlayBoxes(slide);
+          renderBlocksEditor(slide);
+          renderSlideList();
+          renderCurrentSlideStage();
+          setStatus('已刪除該文字框，並將該區域底圖無損還原為原始畫面。');
+        });
+      });
+    }
+
+    // 綁定畫布上的滑鼠左鍵拖曳圈選事件 (Marquee Selection)
+    if (slideStageWrapper && selectionMarquee && stageBaseImage) {
+      slideStageWrapper.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        const slide = state.slides[state.currentSlideIndex];
+        if (!slide) return;
+
+        const rect = stageBaseImage.getBoundingClientRect();
+        state.isDraggingMarquee = true;
+        state.dragStartX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        state.dragStartY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+        selectionMarquee.style.left = state.dragStartX + 'px';
+        selectionMarquee.style.top = state.dragStartY + 'px';
+        selectionMarquee.style.width = '0px';
+        selectionMarquee.style.height = '0px';
+        selectionMarquee.style.display = 'block';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!state.isDraggingMarquee) return;
+        const rect = stageBaseImage.getBoundingClientRect();
+        const currX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const currY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+        const x0 = Math.min(state.dragStartX, currX);
+        const y0 = Math.min(state.dragStartY, currY);
+        const w = Math.abs(currX - state.dragStartX);
+        const h = Math.abs(currY - state.dragStartY);
+
+        selectionMarquee.style.left = x0 + 'px';
+        selectionMarquee.style.top = y0 + 'px';
+        selectionMarquee.style.width = w + 'px';
+        selectionMarquee.style.height = h + 'px';
+      });
+
+      window.addEventListener('mouseup', async (e) => {
+        if (!state.isDraggingMarquee) return;
+        state.isDraggingMarquee = false;
+        selectionMarquee.style.display = 'none';
+
+        const slide = state.slides[state.currentSlideIndex];
+        if (!slide) return;
+
+        const rect = stageBaseImage.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const currX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const currY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+        const x0 = Math.min(state.dragStartX, currX);
+        const y0 = Math.min(state.dragStartY, currY);
+        const w = Math.abs(currX - state.dragStartX);
+        const h = Math.abs(currY - state.dragStartY);
+
+        // 過濾誤點 (拖曳寬高需大於 10px 才視為圈選)
+        if (w < 10 || h < 10) return;
+
+        const scaleX = slide.width / rect.width;
+        const scaleY = slide.height / rect.height;
+
+        const xmin = Math.max(0, Math.round(x0 * scaleX));
+        const ymin = Math.max(0, Math.round(y0 * scaleY));
+        const xmax = Math.min(slide.width, Math.round((x0 + w) * scaleX));
+        const ymax = Math.min(slide.height, Math.round((y0 + h) * scaleY));
+
+        if (state.viewMode !== 'reconstructed') {
+          state.viewMode = 'reconstructed';
+          if (viewTabsGroup) {
+            const tabs = viewTabsGroup.querySelectorAll('.view-tab');
+            tabs.forEach((t) => {
+              t.classList.toggle('active', t.getAttribute('data-mode') === 'reconstructed');
+            });
+          }
+        }
+
+        await processUserSelectedRegion(slide, xmin, ymin, xmax, ymax);
+      });
+    }
+
+    async function exportEditablePptx() {
+      if (!window.PptxGenJS || state.slides.length === 0) return;
+      setStatus('正在打包生成可編輯的 PowerPoint (.pptx) 檔案...');
+
+      const pptx = new window.PptxGenJS();
+      const baseMetrics = getSlideMetrics(state.slides[0]);
+      const SLIDE_W = baseMetrics.slideWInch;
+      const SLIDE_H = baseMetrics.slideHInch;
+
+      if (baseMetrics.is16x9) {
+        pptx.layout = 'LAYOUT_16x9';
+      } else if (baseMetrics.is4x3) {
+        pptx.layout = 'LAYOUT_4x3';
+      } else {
+        pptx.defineLayout({ name: 'CUSTOM_AUTO_LAYOUT', width: SLIDE_W, height: SLIDE_H });
+        pptx.layout = 'CUSTOM_AUTO_LAYOUT';
+      }
+
+      for (let i = 0; i < state.slides.length; i++) {
+        const s = state.slides[i];
+        const slide = pptx.addSlide();
+
+        const bgData = s.cleanBase64 || s.origBase64;
+        slide.background = { data: bgData };
+
+        for (let j = 0; j < s.blocks.length; j++) {
+          const b = s.blocks[j];
+          const xInch = (b.x_pct / 100) * SLIDE_W;
+          const yInch = (b.y_pct / 100) * SLIDE_H;
+          const wInch = Math.min(SLIDE_W - xInch, (b.w_pct / 100) * SLIDE_W * 1.08);
+          const hInch = Math.max(0.25, (b.h_pct / 100) * SLIDE_H * 1.05);
+
+          slide.addText(b.text, {
+            x: xInch,
+            y: yInch,
+            w: wInch,
+            h: hInch,
+            fontSize: b.fontSizePt,
+            color: b.fontColor || '000000',
+            bold: Boolean(b.isBold),
+            fontFace: 'Microsoft JhengHei',
+            valign: 'top',
+            margin: 0,
+            wrap: true
+          });
+        }
+      }
+
+      const fileName = `NotebookLM_Editable_${new Date().toISOString().slice(0, 10)}.pptx`;
+      await pptx.writeFile({ fileName });
+      setStatus(`已成功匯出可編輯簡報：${fileName}`);
+    }
+
+    const dropzoneTutorialLink = document.getElementById('dropzoneTutorialLink');
+    if (dropzoneTutorialLink) {
+      dropzoneTutorialLink.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    if (uploadDropzone && fileInput) {
+      uploadDropzone.addEventListener('click', () => fileInput.click());
+      uploadDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadDropzone.classList.add('dragover');
+      });
+      uploadDropzone.addEventListener('dragleave', () => {
+        uploadDropzone.classList.remove('dragover');
+      });
+      uploadDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadDropzone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleFiles(e.dataTransfer.files);
+        }
+      });
+    }
+
+    if (reuploadBtn && fileInput) {
+      reuploadBtn.addEventListener('click', () => fileInput.click());
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files) {
+          handleFiles(e.target.files);
+          fileInput.value = '';
+        }
+      });
+    }
+
+    if (analyzeAllBtn) {
+      analyzeAllBtn.addEventListener('click', () => analyzeAllSlides());
+    }
+
+    if (analyzeCurrentBtn) {
+      analyzeCurrentBtn.addEventListener('click', () => {
+        if (state.currentSlideIndex >= 0) {
+          const slide = state.slides[state.currentSlideIndex];
+          if (slide && slide.blocks.length > 0) {
+            const ok = window.confirm('本頁已有圈選或編輯過的文字區塊，執行「整頁自動辨識」將會重新掃描並覆蓋現有區塊，確定要繼續嗎？');
+            if (!ok) return;
+          }
+          analyzeSlideAtIndex(state.currentSlideIndex);
+        }
+      });
+    }
+
+    if (clearSlideBlocksBtn) {
+      clearSlideBlocksBtn.addEventListener('click', async () => {
+        const slide = state.slides[state.currentSlideIndex];
+        if (!slide) return;
+        slide.blocks = [];
+        state.selectedBlockId = null;
+        await rebuildSlideCleanImage(slide);
+        renderSlideList();
+        renderCurrentSlideStage();
+        setStatus('已清除本頁所有文字框，畫面已 100% 還原為原始簡報底圖。');
+      });
+    }
+
+    if (removeWatermarkCheckbox) {
+      removeWatermarkCheckbox.addEventListener('change', async () => {
+        for (let i = 0; i < state.slides.length; i++) {
+          await rebuildSlideCleanImage(state.slides[i]);
+        }
+        renderSlideList();
+        renderCurrentSlideStage();
+      });
+    }
+
+    if (inpaintModeSelect) {
+      inpaintModeSelect.addEventListener('change', async () => {
+        for (let i = 0; i < state.slides.length; i++) {
+          await rebuildSlideCleanImage(state.slides[i]);
+        }
+        renderSlideList();
+        renderCurrentSlideStage();
+      });
+    }
+
+    if (exportPptxBtn) {
+      exportPptxBtn.addEventListener('click', () => exportEditablePptx());
+    }
+
+    if (viewTabsGroup) {
+      const tabs = viewTabsGroup.querySelectorAll('.view-tab');
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          tabs.forEach((t) => t.classList.remove('active'));
+          tab.classList.add('active');
+          state.viewMode = tab.getAttribute('data-mode') || 'reconstructed';
+          renderCurrentSlideStage();
+        });
+      });
+    }
+
+    if (stageBaseImage) {
+      stageBaseImage.addEventListener('load', () => {
+        const slide = state.slides[state.currentSlideIndex];
+        if (slide && state.viewMode === 'reconstructed') {
+          renderOverlayBoxes(slide);
+        }
+      });
+    }
+
+    window.addEventListener('resize', () => {
+      const slide = state.slides[state.currentSlideIndex];
+      if (slide && state.viewMode === 'reconstructed') {
+        renderOverlayBoxes(slide);
+      }
+    });
+  </script>
+</body>
+</html>

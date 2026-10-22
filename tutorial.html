@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';" />
+  <title>使用教學 | NotebookLM 簡報轉可編輯 PPTX 工作台</title>
+  <style>
+    :root {
+      --bg-main: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-subtle: #F1F5F9;
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --border-color: #E2E8F0;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --success: #059669;
+      --danger: #DC2626;
+      --warning-bg: #FFFBEB;
+      --warning-border: #FDE68A;
+      --warning-text: #92400E;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      line-height: 1.65;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .badge {
+      background-color: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid #BFDBFE;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #FFFFFF;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-outline {
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+      border-color: var(--border-color);
+    }
+
+    .btn-outline:hover {
+      background-color: var(--bg-subtle);
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    .hero-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 28px;
+    }
+
+    .hero-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .hero-desc {
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-bottom: 18px;
+    }
+
+    .quick-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .section-block {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--bg-subtle);
+      color: var(--text-primary);
+    }
+
+    .step-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+      gap: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .step-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .step-card {
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      background-color: #FCFDFE;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .step-list {
+      padding-left: 20px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* 視覺化示意圖框 */
+    .visual-demo {
+      margin-top: 8px;
+      padding: 14px;
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .demo-slide-box {
+      position: relative;
+      background: linear-gradient(135deg, #FFFFFF 0%, #F1F5F9 100%);
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      height: 110px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .demo-marquee-box {
+      display: inline-block;
+      border: 2px dashed var(--primary);
+      background-color: rgba(37, 99, 235, 0.08);
+      padding: 2px 6px;
+      font-weight: 700;
+      color: var(--text-primary);
+      width: fit-content;
+    }
+
+    .demo-wm-removed {
+      align-self: flex-end;
+      font-size: 11px;
+      color: var(--success);
+      background-color: #ECFDF5;
+      border: 1px solid #A7F3D0;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    th, td {
+      border: 1px solid var(--border-color);
+      padding: 12px 14px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background-color: var(--bg-subtle);
+      font-weight: 700;
+      color: var(--text-primary);
+      width: 24%;
+    }
+
+    td {
+      color: var(--text-secondary);
+    }
+
+    .faq-item {
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 0;
+    }
+
+    .faq-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .faq-q {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .faq-a {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .tip-banner {
+      background-color: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 16px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      border-top: 1px solid var(--border-color);
+      background-color: var(--bg-surface);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-group">
+      <div class="brand-title">NotebookLM 簡報轉可編輯 PPTX — 使用教學指南</div>
+      <span class="badge">單一檔案獨立版</span>
+    </div>
+    <div>
+      <a href="index.html" class="btn btn-primary">返回簡報轉換工作台 (index.html)</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- 導覽主視覺卡片 -->
+    <section class="hero-card">
+      <h1 class="hero-title">如何將 NotebookLM 靜態簡報轉為可自由編輯的 PowerPoint？</h1>
+      <p class="hero-desc">
+        NotebookLM 匯出的簡報預設為靜態圖片或不可修改文字的 PDF。本工具採用「局部無痕筆畫抹除 + 原位疊加可編輯文字框」技術，讓您直接在畫面上用滑鼠左鍵圈選想修改的文字，未圈選的複雜圖表與插畫則維持 100% 原始高解析度畫質。
+      </p>
+      <div class="quick-nav">
+        <a href="#sec-steps" class="btn btn-outline">1. 標準操作 4 步驟</a>
+        <a href="#sec-toolbar" class="btn btn-outline">2. 工具列與模式說明</a>
+        <a href="#sec-tips" class="btn btn-outline">3. 進階技巧與常見問題</a>
+        <a href="index.html" class="btn btn-primary">立即前往開始轉換</a>
+      </div>
+    </section>
+
+    <!-- 一、標準操作 4 步驟 -->
+    <section class="section-block" id="sec-steps">
+      <h2 class="section-title">一、 標準操作 4 步驟（推薦：滑鼠自由圈選局部修改模式）</h2>
+
+      <div class="step-grid">
+        <!-- 步驟 1 -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-num">1</span>
+            <h3 class="step-card-title">匯入簡報檔案（自動無痕消除浮水印）</h3>
+          </div>
+          <ol class="step-list">
+            <li>在主畫面點擊 <strong>「選擇檔案」</strong> 按鈕，或直接將檔案拖曳至中央虛線框。</li>
+            <li>支援格式：NotebookLM 匯出的 <strong>.pdf</strong>、圖片型 <strong>.pptx</strong>，或多張 <strong>.png / .jpg</strong> 投影片截圖。</li>
+            <li>匯入後左側會列出所有投影片縮圖，系統同時會以「鄰域筆畫擴散演算法」自動無痕消除右下角的 NotebookLM 浮水印，絕不留異色方塊。</li>
+          </ol>
+          <div class="visual-demo">
+            <div class="demo-slide-box">
+              <div style="color: #64748B; font-size: 12px;">投影片預覽畫布</div>
+              <div class="demo-wm-removed">右下角浮水印已自動無痕融合消除</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步驟 2 -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-num">2</span>
+            <h3 class="step-card-title">滑鼠左鍵拖曳框選要修改的文字</h3>
+          </div>
+          <ol class="step-list">
+            <li>在左側點選要修改的投影片頁面。</li>
+            <li>將滑鼠移至中央投影片畫布上，對準想修改的標題或數據，<strong>按住滑鼠左鍵拖曳拉出藍色選取框</strong>（框選時四周可稍微留一點背景邊距），放開滑鼠。</li>
+            <li>系統會在 1 秒內自動抹除該處原字、自動偵測原本的文字內容與顏色，並在原字左上角精準產生可編輯文字框。</li>
+          </ol>
+          <div class="visual-demo">
+            <div class="demo-slide-box">
+              <div class="demo-marquee-box">按住滑鼠左鍵框選此處標題文字</div>
+              <div style="font-size: 12px; color: #475569;">放開滑鼠後自動去字並轉為可編輯文字方塊</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步驟 3 -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-num">3</span>
+            <h3 class="step-card-title">修改文字內容、樣式與拖曳微調位置</h3>
+          </div>
+          <ol class="step-list">
+            <li><strong>直接打字修改</strong>：圈選完畢後，游標會自動聚焦至右側欄的文字輸入框，直接打字即可即時反映在中央畫布上。</li>
+            <li><strong>調整字級與顏色</strong>：可在右側卡片下方自由修改 <strong>「字級(pt)」</strong>、點擊色票調整 <strong>「顏色」</strong> 或切換 <strong>「粗體」</strong>。</li>
+            <li><strong>畫布拖曳微調</strong>：可在中央畫布上直接用滑鼠左鍵按住藍色虛線框拖曳移動位置。</li>
+            <li><strong>單區無損還原</strong>：點擊右側卡片的 <strong>「刪除 (還原原圖)」</strong>，該處底下的原始圖片與文字會 100% 無損恢復。</li>
+          </ol>
+        </div>
+
+        <!-- 步驟 4 -->
+        <div class="step-card">
+          <div class="step-header">
+            <span class="step-num">4</span>
+            <h3 class="step-card-title">一鍵匯出可編輯 PowerPoint (.pptx)</h3>
+          </div>
+          <ol class="step-list">
+            <li>確認所有頁面修改完畢後，點擊頂部工具列最右側的綠色按鈕 <strong>「匯出可編輯 PPTX」</strong>。</li>
+            <li>瀏覽器會自動打包下載 <code>NotebookLM_Editable_日期.pptx</code>。</li>
+            <li>以 PowerPoint 開啟後，所有圈選過的區域皆為<strong>獨立原生文字方塊</strong>（微軟正黑體），其餘未圈選圖表則維持 100% 原始高畫質。</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="tip-banner">
+        <strong>操作小訣竅：</strong>如果您只想把簡報上某段多餘的文字或小圖示「單純擦掉、不放新文字」，只需用滑鼠框選該區域後，把右側文字編輯框裡的字全部刪空（留白），原圖上的字跡就會被無痕抹除！
+      </div>
+    </section>
+
+    <!-- 二、工具列與控制項詳細說明 -->
+    <section class="section-block" id="sec-toolbar">
+      <h2 class="section-title">二、 頂部與畫布工具列功能對照表</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>功能按鈕 / 選項</th>
+            <th>功能說明與建議設定</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>去字模式</strong></td>
+            <td>
+              1. <strong>智慧混合（預設推薦）</strong>：採用「筆畫遮罩 + 14 次鄰域調和擴散修復」，只針對文字筆畫像素與周圍 1px 原圖進行融合，不會破壞漸層底圖或留下矩形色塊。<br />
+              2. <strong>背景中位數純色覆蓋</strong>：使用上下邊界雙線性漸層底色填滿整個框選矩形，適合純白或單一純色底圖。
+            </td>
+          </tr>
+          <tr>
+            <td><strong>抹除右下角浮水印</strong></td>
+            <td>
+              預設勾選。匯入簡報時會自動無痕消除每頁右下角的 <code>NotebookLM</code> 浮水印；若取消勾選，右下角會立即無損還原為原始畫面。
+            </td>
+          </tr>
+          <tr>
+            <td><strong>畫布上方 3 種檢視分頁</strong></td>
+            <td>
+              1. <strong>圈選編輯預覽</strong>：同時顯示去字後的乾淨底圖與可編輯文字框（預設工作模式）。<br />
+              2. <strong>僅檢視無字底圖</strong>：暫時隱藏所有文字框，方便檢查原圖字跡與浮水印是否抹除乾淨。<br />
+              3. <strong>檢視原始圖片</strong>：隨時切換回未修改前的原始簡報圖片進行位置與字體大小比對。
+            </td>
+          </tr>
+          <tr>
+            <td><strong>還原本頁原圖</strong></td>
+            <td>
+              一鍵清空本頁所有已圈選的文字框，將本頁 100% 恢復為最初匯入的原始簡報狀態。
+            </td>
+          </tr>
+          <tr>
+            <td><strong>整頁自動辨識此頁 / 全部頁面</strong></td>
+            <td>
+              若某頁投影片幾乎全為文字段落且希望整頁自動轉為文字框，可點擊此按鈕使用本機離線 OCR 引擎自動掃描整頁。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 三、常見問題 FAQ -->
+    <section class="section-block" id="sec-tips">
+      <h2 class="section-title">三、 常見問題與跨電腦移轉說明（FAQ）</h2>
+
+      <div class="faq-item">
+        <div class="faq-q">Q1：我要如何把這個工具複製到其他電腦給自己或同事使用？</div>
+        <div class="faq-a">
+          只需將資料夾中的 <strong><code>index.html</code></strong> 與本教學頁面 <strong><code>tutorial.html</code></strong> 兩個檔案一起複製到隨身碟、雲端硬碟或透過通訊軟體傳送到另一台電腦，直接用滑鼠雙擊 <code>index.html</code> 即可在瀏覽器中使用，完全不需要安裝 Python 或任何軟體。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q2：為什麼推薦使用「滑鼠左鍵拖曳圈選」而非每次都按「整頁自動辨識」？</div>
+        <div class="faq-a">
+          因為 NotebookLM 產出的簡報通常包含大量精美的圓餅圖、流程圖與資訊圖表（Infographics）。若對整頁進行全自動去字，圖表內的小標籤也可能會被抹除重排；透過「滑鼠拖曳圈選」，您可以只挑出真正需要改字的標題或數據進行替換，讓其餘 95% 的精美排版維持 100% 原圖畫質。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Q3：我的簡報檔案會被上傳到外部伺服器嗎？</div>
+        <div class="faq-a">
+          不會。本工具已全面移除外部雲端 AI 連線功能，包含 PDF 解析、PPTX 解壓縮、Canvas 筆畫無痕修復、離線文字辨識（RapidOCR / Tesseract.js）與 PPTX 檔案打包，全程 100% 在您電腦的瀏覽器記憶體或本機環境內完成，且透過瀏覽器 Content Security Policy (CSP) 嚴格封鎖外部資料傳輸，確保企業內部簡報的機密安全。
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div>NotebookLM 簡報轉可編輯 PPTX 工作台 | 預設明亮模式介面 | <a href="index.html" style="color: var(--primary); font-weight: 600; text-decoration: none;">返回工作台 (index.html)</a></div>
+  </footer>
+</body>
+</html>

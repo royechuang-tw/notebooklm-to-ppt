@@ -1,0 +1,19 @@
+# 忽略環境變數與金鑰設定檔
+.env
+.env.*
+*.pem
+*.key
+
+# 忽略編輯器與作業系統暫存檔
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# 忽略備份檔與測試暫存檔
+*.bak
+*.tmp
+*.swp
+*~
+node_modules/
